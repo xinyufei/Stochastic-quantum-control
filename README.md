@@ -1,4 +1,4 @@
-# stochastic-quantum-control
+# Stochastic-quantum-control
 Solve quantum control problem with uncertain Hamiltonians. 
 
 Todo:
