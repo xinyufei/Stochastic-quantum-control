@@ -9,9 +9,10 @@ import scipy.optimize
 import matplotlib.pyplot as plt
 import qutip.control.pulseoptim as cpo
 from qutip import Qobj
+import gurobipy as gb
 
 
-class JointCvarOptimizer(): # StepCvarOptimization
+class StepCvarOptimizer:
     """
     optimal controller for CVaR robust model
     """
@@ -68,16 +69,12 @@ class JointCvarOptimizer(): # StepCvarOptimization
         self.optim = []
 
     def build_optimizer(self, d_hamil, c_hamil, init_state, targ_state, n_ts, evo_time, amp_lbound=0, amp_ubound=1,
-                        min_grad=1e-8, max_iter_step=500, obj_mode="fid", init_type="ZERO", seed=None, constant=0,
+                        min_grad=1e-6, max_iter_step=500, obj_mode="fid", init_type="ZERO", seed=None, constant=0,
                         initial_control=None, output_num=None, output_fig=None, output_control=None,
                         sos1=False, penalty=10, d_uncertainty=None, c_uncertainty=None, num_scenario=1,
                         thre_cvar=0, prob=[1]):
-        self.d_hamil_qobj = Qobj(d_hamil)
-        self.c_hamil_qobj = [Qobj(c_hamil_j) for c_hamil_j in c_hamil]
         self.d_hamil = d_hamil
         self.c_hamil = c_hamil
-        self.init_state_qobj = Qobj(init_state)
-        self.targ_state_qobj = Qobj(targ_state)
         self.init_state = init_state
         self.targ_state = targ_state
         self.n_ts = n_ts
@@ -102,10 +99,13 @@ class JointCvarOptimizer(): # StepCvarOptimization
         self.thre_cvar = thre_cvar
         self.prob = prob
 
-        self.u = np.zeros((self.n_ts, self.n_ctrls))
         self.delta_t = evo_time / n_ts
 
         if self.obj_mode == 'fid':
+            self.d_hamil_qobj = Qobj(d_hamil)
+            self.c_hamil_qobj = [Qobj(c_hamil_j) for c_hamil_j in c_hamil]
+            self.init_state_qobj = Qobj(init_state)
+            self.targ_state_qobj = Qobj(targ_state)
             self.n_ctrls = len(self.c_hamil)
             for l in range(self.num_scenario):
                 r_d_hamil = (1 + self.d_uncertain[l]) * self.d_hamil_qobj
@@ -115,10 +115,12 @@ class JointCvarOptimizer(): # StepCvarOptimization
                                                         amp_lbound=self.amp_lbound, amp_ubound=self.amp_ubound,
                                                         dyn_type='UNIT', phase_option="PSU",
                                                         init_pulse_params={"offset": 0}, gen_stats=True)
+            self.u = np.zeros((self.n_ts, self.n_ctrls))
         if self.obj_mode == 'energy':
             self.n_ctrls = len(self.c_hamil) - 1
             self._into = [None] * self.num_scenario
             self._onto = [None] * self.num_scenario
+            self.u = np.zeros(self.n_ts)
 
     def _initialize_control(self):
         """
@@ -154,9 +156,9 @@ class JointCvarOptimizer(): # StepCvarOptimization
     def _back_propagation_energy(self, control_amps):
         for l in range(self.num_scenario):
             r_c_hamil = [(1 + self.c_uncertain[0, l]) * self.c_hamil[0], (1 + self.c_uncertain[1, l]) * self.c_hamil[1]]
-            self._onto = [self._into[l][-1].conj().T.dot(r_c_hamil[1].conj().T)]
+            self._onto[l] = [self._into[l][-1].conj().T.dot(r_c_hamil[1].conj().T)]
             for k in range(self.n_ts):
-                bwd = self._onto[k].dot(expm(-1j * (control_amps[self.n_ts - k - 1] * r_c_hamil[0] + (
+                bwd = self._onto[l][k].dot(expm(-1j * (control_amps[self.n_ts - k - 1] * r_c_hamil[0] + (
                         1 - control_amps[self.n_ts - k - 1]) * r_c_hamil[1]) * self.delta_t))
                 self._onto[l].append(bwd)
 
@@ -183,26 +185,35 @@ class JointCvarOptimizer(): # StepCvarOptimization
         :param args: control list
         :return: error
         """
-        control_amps = args[0].copy()[:-1]
-        zeta = args[0][-1]
-        # control_amps = control_amps.reshape([self.n_ts, self.n_ctrls])
+        control_amps = args[0].copy()
         self._compute_origin_obj(control_amps)
-        obj = zeta + 1 / self.thre_cvar * sum(self.prob[l] * max(0.0, self.obj[l] - zeta)
-                                              for l in range(self.num_scenario))
+        # directly compute zeta
+        if len(self.obj) == 0:
+            self.zeta = -1
+        else:
+            m = gb.Model()
+            zeta_var = m.addVar(lb=-np.infty)
+            cos = m.addVars(self.num_scenario, lb=0)
+            m.addConstrs(cos[l] >= self.obj[l] - zeta_var for l in range(self.num_scenario))
+            m.setObjective(zeta_var + 1 / self.thre_cvar * gb.quicksum(self.prob[l] * cos[l]
+                                                                       for l in range(self.num_scenario)))
+            m.optimize()
+            self.zeta = zeta_var.x
+        # control_amps = control_amps.reshape([self.n_ts, self.n_ctrls])
+        obj = self.zeta + 1 / self.thre_cvar * sum(self.prob[l] * max(0.0, self.obj[l] - self.zeta)
+                                                   for l in range(self.num_scenario))
         penalized = 0
         if self.sum_cons_1:
             penalized = self.penalty * self._compute_l2_penalty(control_amps.reshape([self.n_ts, self.n_ctrls]))
         return obj + penalized
 
     def _compute_gradient(self, *args):
-        control_amps = args[0].copy()[:-1]
-        zeta = args[0][-1]
-
+        control_amps = args[0].copy()
         grad_control = np.zeros((self.n_ts, self.n_ctrls))
         penalized_grad = np.zeros((self.n_ts, self.n_ctrls))
         if self.obj_mode == 'fid':
             for l in range(self.num_scenario):
-                if zeta <= self.obj[l]:
+                if self.zeta <= self.obj[l]:
                     grad = self.optim[l].fid_err_grad_compute(control_amps.reshape([self.n_ts, self.n_ctrls]))
                     grad_control += self.prob[l] / self.thre_cvar * grad
 
@@ -214,22 +225,16 @@ class JointCvarOptimizer(): # StepCvarOptimization
 
         if self.obj_mode == 'energy':
             for l in range(self.num_scenario):
-                if zeta <= self.obj[l]:
+                if self.zeta <= self.obj[l]:
                     grad = []
                     r_c_hamil = [(1 + self.c_uncertain[0, l]) * self.c_hamil[0],
                                  (1 + self.c_uncertain[1, l]) * self.c_hamil[1]]
                     for k in range(self.n_ts):
                         grad += [-np.imag(self._onto[l][self.n_ts - k - 1].dot((r_c_hamil[1] - r_c_hamil[0]).dot(
                             self._into[l][k + 1])) * self.delta_t)]
-                    grad_control += self.prob[l] / self.thre_cvar * np.array(grad)
+                    grad_control += self.prob[l] / self.thre_cvar * np.expand_dims(np.array(grad), 1)
 
-        # gradient for zeta
-        grad_zeta = 1.0
-        for l in range(self.num_scenario):
-            if zeta <= self.obj[l]:
-                grad_zeta -= self.prob[l] / self.thre_cvar
-
-        return np.append(grad_control.flatten() + penalized_grad.flatten(), grad_zeta)
+        return grad_control.flatten() + penalized_grad.flatten()
 
     def _minimize_u(self):
         self.time_optimize_start_step = time.time()
@@ -237,7 +242,7 @@ class JointCvarOptimizer(): # StepCvarOptimization
         min_grad = self.min_grad
         results = scipy.optimize.fmin_l_bfgs_b(self._compute_obj, self.init_amps.reshape(-1),
                                                bounds=[(self.amp_lbound, self.amp_ubound)] * self.n_ts * self.n_ctrls,
-                                               pgtol=min_grad, fprime=self._compute_gradient(),
+                                               pgtol=min_grad, fprime=self._compute_gradient,
                                                maxiter=self.max_iter_step)
         if self.n_ctrls == 1:
             self.u = results[0]
@@ -249,16 +254,17 @@ class JointCvarOptimizer(): # StepCvarOptimization
         # self.u = results.x.reshape((self.n_ts, self.n_ctrls)).copy()
         # self.cur_obj = results.fun
 
-    def optimize_penalized(self):
+    def optimize_cvar(self):
         self._initialize_control()
-        initial_amps = self.init_amps.copy()
         start = time.time()
         self._minimize_u()
         end = time.time()
 
         # output the results
         # evo_full_final = self.evolution(self.u)
-        penalty = self._compute_l2_penalty(self.u)
+        penalty = 0
+        if self.sum_cons_1:
+            penalty = self._compute_l2_penalty(self.u)
         if self.result[2]['warnflag'] == 0:
             t_reason = "Converged"
         if self.result[2]['warnflag'] == 1:
@@ -268,7 +274,10 @@ class JointCvarOptimizer(): # StepCvarOptimization
         report = open(self.output_num, "w+")
         # print("Final evolution\n{}\n".format(evo_full_final), file=report)
         print("********* Summary *****************", file=report)
+        print("Zeta value {}".format(self.zeta), file=report)
         print("Final original objective value {}".format(self.obj), file=report)
+        print("Final maximum original objective value {}".format(min(abs(self.obj))), file=report)
+        print("Final average original objective value {}".format(sum(self.obj) / len(self.obj)), file=report)
         print("Final original objective value exceeding current objective value {}".format(
             self.obj[self.obj > self.cur_obj]), file=report)
         print("Final squared penalty error {}".format(penalty), file=report)
@@ -283,8 +292,12 @@ class JointCvarOptimizer(): # StepCvarOptimization
         if self.obj_mode == "energy":
             self.n_ctrls += 1
             final_amps = np.zeros((self.n_ts, self.n_ctrls))
-            final_amps[:, 0] = self.u[:, 0].copy()
-            final_amps[:, 1] = 1 - self.u[:, 0].copy()
+            final_amps[:, 0] = self.u.copy()
+            final_amps[:, 1] = 1 - self.u.copy()
+
+            initial_amps = np.zeros((self.n_ts, self.n_ctrls))
+            initial_amps[:, 0] = self.init_amps.copy().reshape(-1)
+            initial_amps[:, 1] = 1 - initial_amps[:, 0]
 
         else:
             final_amps = self.u.copy()
@@ -301,6 +314,7 @@ class JointCvarOptimizer(): # StepCvarOptimization
         ax1.set_ylabel("Control amplitude")
         for j in range(self.n_ctrls):
             ax1.step(time_list, np.hstack((initial_amps[:, j], initial_amps[-1, j])), where='post')
+
 
         ax2 = fig1.add_subplot(2, 1, 2)
         ax2.set_title("Optimised Control Sequences")
