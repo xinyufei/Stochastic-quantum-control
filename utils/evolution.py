@@ -56,3 +56,16 @@ def compute_sum_cons(u_list, max_controllers):
     n_ts = u_list.shape[0]
     penalty = sum(np.power(sum(u_list[t, j] for j in range(n_ctrls)) - max_controllers, 2) for t in range(n_ts))
     return penalty
+
+
+def out_of_sample_test(num_scenario, c_uncertainty, H_d, H_c, n_ts, evo_time, u_list, X_0, X_targ, obj_type):
+    obj_val = np.zeros(num_scenario)
+    for l in range(num_scenario):
+        cur_result = time_evolution(H_d, [(1 + c_uncertainty[j, l]) * H_c[j] for j in range(len(H_c))],
+                                    n_ts, evo_time, u_list, X_0, False, 1)
+        if obj_type == 'energy':
+            obj_val[l] = compute_obj_energy((1 + c_uncertainty[1, l]) * H_c[1], cur_result)
+        if obj_type == 'fid':
+            obj_val[l] = compute_obj_fid(X_targ, cur_result)
+    return obj_val
+
