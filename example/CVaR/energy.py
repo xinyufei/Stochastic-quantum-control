@@ -13,14 +13,14 @@ parser = argparse.ArgumentParser()
 # name of example
 parser.add_argument('--name', help='example name', type=str, default='Energy')
 # number of qubits
-parser.add_argument('--n', help='number of qubits', type=int, default=4)
+parser.add_argument('--n', help='number of qubits', type=int, default=2)
 # number of edges for generating regular graph
 parser.add_argument('--num_edges', help='number of edges for generating regular graph', type=int,
                     default=1)
 # if generate the graph randomly
 parser.add_argument('--rgraph', help='if generate the graph randomly', type=int, default=0)
 # number of instances
-parser.add_argument('--g_seed', help='graph seed', type=int, default=1)
+parser.add_argument('--g_seed', help='graph seed', type=int, default=0)
 # seed for uncertainties
 parser.add_argument('--r_seed', help='seed for uncertainties', type=int, default=0)
 # number of scenarios
@@ -42,17 +42,18 @@ parser.add_argument('--max_iter', help='maximum number of iterations', type=int,
 parser.add_argument('--min_grad', help='minimum gradient', type=float, default=1e-6)
 # threshold of CVaR
 parser.add_argument('--cvar', help='threshold of CVaR', type=float, default=0.01)
+parser.add_argument('--bound', help='bound of uniform sample', type=float, default=0.2)
 
 args = parser.parse_args()
 
 y0 = uniform(args.n)
 
-if not os.path.exists("../output/Stepcvar/"):
-    os.makedirs("../output/Stepcvar/")
-if not os.path.exists("../control/Stepcvar/"):
-    os.makedirs("../control/Stepcvar/")
-if not os.path.exists("../figure/Stepcvar/"):
-    os.makedirs("../figure/Stepcvar/")
+if not os.path.exists("../../output/Stepcvar/"):
+    os.makedirs("../../output/Stepcvar/")
+if not os.path.exists("../../control/Stepcvar/"):
+    os.makedirs("../../control/Stepcvar/")
+if not os.path.exists("../../figure/Stepcvar/"):
+    os.makedirs("../../figure/Stepcvar/")
 
 if args.rgraph == 0:
     Jij, edges = generate_Jij_MC(args.n, args.num_edges, 100)
@@ -63,18 +64,21 @@ if args.rgraph == 0:
     args.seed = 0
     
 
-output_num = "../output/Stepcvar/" + "{}_evotime{}_n_ts{}_ptype{}_offset{}_instance{}_scenario{}_cvar{}".format(
-    args.name + str(args.n), args.evo_time, args.n_ts, args.initial_type, args.offset, args.g_seed, args.num_scenario,
-    args.cvar) + ".log"
-output_fig = "../figure/Stepcvar/" + "{}_evotime{}_n_ts{}_ptype{}_offset{}_instance{}_scenario{}_cvar{}".format(
-    args.name + str(args.n), args.evo_time, args.n_ts, args.initial_type, args.offset, args.g_seed, args.num_scenario,
-    args.cvar) + ".png"
-output_control = "../control/Stepcvar/" + "{}_evotime{}_n_ts{}_ptype{}_offset{}_instance{}_scenario{}_cvar{}".format(
-    args.name + str(args.n), args.evo_time, args.n_ts, args.initial_type, args.offset, args.g_seed, args.num_scenario,
-    args.cvar) + ".csv"
+output_num = "../../output/Stepcvar/" + \
+                 "{}_evotime{}_n_ts{}_ptype{}_offset{}_instance{}_scenario{}_cvar{}_bound{}".format(
+                     args.name + str(args.n), args.evo_time, args.n_ts, args.initial_type, args.offset, args.g_seed,
+                     args.num_scenario, args.cvar, args.bound) + ".log"
+output_fig = "../../figure/Stepcvar/" + \
+                 "{}_evotime{}_n_ts{}_ptype{}_offset{}_instance{}_scenario{}_cvar{}_bound{}".format(
+                     args.name + str(args.n), args.evo_time, args.n_ts, args.initial_type, args.offset, args.g_seed,
+                     args.num_scenario, args.cvar, args.bound) + ".png"
+output_control = "../../control/Stepcvar/" + \
+                 "{}_evotime{}_n_ts{}_ptype{}_offset{}_instance{}_scenario{}_cvar{}_bound{}".format(
+                     args.name + str(args.n), args.evo_time, args.n_ts, args.initial_type, args.offset, args.g_seed,
+                     args.num_scenario, args.cvar, args.bound) + ".csv"
     
 if args.rgraph == 1:
-    Jij = generate_Jij(args.n, args.seed)
+    Jij = generate_Jij(args.n, args.g_seed)
     C = get_ham(args.n, True, Jij)
     B = get_ham(args.n, False, Jij)
 
@@ -82,7 +86,7 @@ if args.num_scenario == 1:
     c_uncertainty = np.zeros((2, 1))
 else:
     np.random.seed(args.r_seed)
-    c_uncertainty = np.random.uniform(low=-0.2, high=0.2, size=(2, args.num_scenario))
+    c_uncertainty = np.random.uniform(low=-args.bound, high=args.bound, size=(2, args.num_scenario))
 prob = np.ones(args.num_scenario) * 1 / args.num_scenario
 
 # opt = JointCvarOptimizer()

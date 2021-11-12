@@ -2,6 +2,7 @@
 Zeta value -0.8080873589761265
 Final original objective value [-0.94522926 -0.92639126 -0.93974744 -0.93082271 -0.8278123  -0.82739729
  -0.80808736 -0.90130606 -0.89365953 -0.94472832]
+Final maximum original objective value 0.8080873589761265
 Final average original objective value -0.8945181524089911
 Final original objective value exceeding current objective value []
 Final squared penalty error 0
@@ -18,15 +19,7 @@ Final gradient [ 6.73621639e-09  1.15674171e-08  1.61974622e-08  2.05628610e-08
  -1.75365961e-08 -2.19391743e-08 -2.63532187e-08 -3.07347161e-08]
 Number of iterations 8
 Terminated due to Converged
-Completed in 0:00:02.224438 HH:MM:SS.US
-Computational time 2.2244375410000004
+Completed in 0:00:01.289266 HH:MM:SS.US
+Computational time 1.2892659590000006
 total tv norm 1.8883305641467616
 true energy -1.0189373462922608
-********* Value of one instance *****************
-zeta -0.7767637156151594
-objective value -0.7767637156151594
-Final original objective value [-1.10247018 -1.00520865 -1.02512271 -1.13960705 -0.80266668 -0.8078932
- -0.77676372 -1.09676918 -1.07278714 -1.12142497]
-Final average original objective value -0.9950713476218727
-Final original objective value exceeding current objective value []
-average value -0.9950713476218727

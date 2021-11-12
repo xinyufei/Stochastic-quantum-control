@@ -33,6 +33,7 @@ parser.add_argument('--n_ts', help='time steps', type=int, default=40)
 parser.add_argument('--control', help='file name of control', type=str, default=None)
 # threshold of CVaR
 parser.add_argument('--cvar', help='threshold of CVaR', type=float, default=0.01)
+parser.add_argument('--bound', help='bound of uniform sample', type=float, default=0.3)
 
 args = parser.parse_args()
 
@@ -47,7 +48,7 @@ if args.rgraph == 0:
     args.seed = 0
 
 if args.rgraph == 1:
-    Jij = generate_Jij(args.n, args.seed)
+    Jij = generate_Jij(args.n, args.g_seed)
     C = get_ham(args.n, True, Jij)
     B = get_ham(args.n, False, Jij)
 
@@ -55,23 +56,16 @@ if args.num_scenario == 1:
     c_uncertainty = np.zeros((2, 1))
 else:
     np.random.seed(args.r_seed)
-    c_uncertainty = np.random.uniform(low=-0.2, high=0.2, size=(2, args.num_scenario))
+    c_uncertainty = np.random.uniform(low=-args.bound, high=args.bound, size=(2, args.num_scenario))
 prob = np.ones(args.num_scenario) * 1 / args.num_scenario
 
 if not os.path.exists("../../output/OutSampleTest/"):
     os.makedirs("../../output/OutSampleTest/")
-if not os.path.exists("../../control/OutSampleTest/"):
-    os.makedirs("../../control/OutSampleTest/")
-if not os.path.exists("../../figure/OutSampleTest/"):
-    os.makedirs("../../figure/OutSampleTest/")
 
-# args.control = "../../control/Stepcvar/Energy2_evotime2_n_ts40_ptypeCONSTANT_offset0.5_instance0_scenario10_cvar0.01.csv"
-args.control = "../../control/Average/Energy2_evotime2_n_ts40_ptypeCONSTANT_offset0.5_instance0.csv"
+output_num = "../../output/OutSampleTest/" + args.control.split('/')[-1].split('.csv')[0] + "_out_test" + \
+             "cvar{}_scenario{}_group{}_bound{}".format(args.cvar, args.num_scenario, args.r_seed, args.bound) + ".log"
 
-output_num = "../../output/OutSampleTest/" + args.control.split('/')[-1].split('.csv')[0] + "out_test" + \
-             "_scenario{}".format(args.num_scenario) + ".log"
-
-f = open(output_num, "a+")
+f = open(output_num, "w+")
 control = np.loadtxt(args.control, delimiter=',')
 obj = out_of_sample_test(args.num_scenario, c_uncertainty, np.zeros((2 ** args.n, 2 ** args.n), dtype=complex),
                          [B, C], args.n_ts, args.evo_time, control, y0[0:2 ** args.n], None, 'energy')
@@ -82,9 +76,13 @@ cos = m.addVars(args.num_scenario, lb=0)
 m.addConstrs(cos[l] >= obj[l] - zeta_var for l in range(args.num_scenario))
 m.setObjective(zeta_var + 1 / args.cvar * gb.quicksum(prob[l] * cos[l] for l in range(args.num_scenario)))
 m.optimize()
+print("Final original objective value", file=f)
+for l in range(args.num_scenario):
+    print(obj[l], file=f)
+
+print("********* Summary *****************", file=f)
 print("zeta", zeta_var.x, file=f)
 print("objective value", m.objval, file=f)
-print("Final original objective value {}".format(obj), file=f)
 print("Final maximum energy {}".format(-min(abs(obj))), file=f)
 print("Final average original objective value {}".format(sum(obj) / len(obj)), file=f)
 print("Final original objective value exceeding current objective value {}".format(obj[obj > m.objval]), file=f)
