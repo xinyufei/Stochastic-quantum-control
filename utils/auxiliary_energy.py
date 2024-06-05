@@ -571,9 +571,10 @@ import sys
        
        
 if __name__=="__main__":
-        n = 6
+        n = 4
         num_edges = 2
-        seed = 2
+        seed = 1
+
         # Jij, edges = generate_Jij_MC(n, num_edges, 100)
         Jij = generate_Jij(n, seed)
 

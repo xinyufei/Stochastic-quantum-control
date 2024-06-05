@@ -5,6 +5,23 @@ import time
 import gurobipy as gb
 
 
+def extend_control(initial_control_name, pre_num_step, cur_num_step, save_control=False):
+    new_control_name = initial_control_name.split(".csv")[0] + "_extend_ts_" + str(cur_num_step) + ".csv"
+    initial_control = np.loadtxt(initial_control_name, delimiter=",")
+    step = int(cur_num_step / pre_num_step)
+
+    cur_control = np.zeros((cur_num_step, initial_control.shape[1]))
+
+    for i in range(pre_num_step):
+        for j in range(step):
+            cur_control[i*step+j, :] = initial_control[i, :]
+
+    if save_control:
+        np.savetxt(new_control_name, cur_control, delimiter=",")
+
+    return cur_control
+
+
 class Rounding:
 
     def __init__(self):

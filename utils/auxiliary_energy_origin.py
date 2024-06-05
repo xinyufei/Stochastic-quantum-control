@@ -11,7 +11,9 @@ import numpy as np
 from ctypes import *
 from numpy import random as nrm
 import random as rnd
-from scipy.integrate import odeint
+# from scipy.integrate import odeint
+import sys
+# sys.path.insert(0, '/Users/xinyuf/Documents/Michigan/phd_topic/scipy/build-install/lib/python3.8/site-packages')
 from scipy.interpolate import interp1d
 from scipy.optimize import minimize
 import networkx # for regular graphs
