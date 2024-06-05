@@ -6,6 +6,7 @@ utils/draw_figure.py
 result/control/
 result/figure/
 result/output/
+utils/__pychache__/
 
 
 new_robust_results.xlsx
